@@ -25,3 +25,18 @@ aws configure list --Check current config
 #clear old credentials:
 rm ~/.aws/credentials
 rm ~/.aws/config
+
+kubectl get nodes                                                                                             
+Unable to connect to the server: dial tcp: lookup 5224B9EBDB32AE1763F09050263E9E90.sk1.ap-south-1.eks.amazonaws.com on 127.0.0.53:53: no such host
+solution:
+1.aws eks list-clusters --region ap-south-1
+
+2.aws eks describe-cluster \
+  --name <cluster-name> \
+  --region ap-south-1 \
+  --query "cluster.status"
+you need to get "ACTIVE"
+3.kubectl config current-context #Check Current Contex | You may still be pointing to the deleted cluster.
+4.aws eks update-kubeconfig \ #Regenerate kubeconfig
+  --region ap-south-1 \
+  --name eks
