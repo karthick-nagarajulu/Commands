@@ -40,3 +40,203 @@ you need to get "ACTIVE"
 4.aws eks update-kubeconfig \ #Regenerate kubeconfig
   --region ap-south-1 \
   --name eks
+------------------------------------------------------------------
+Deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: nginx
+
+  template:
+    metadata:
+      labels:
+        app: nginx
+
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+
+        ports:
+        - containerPort: 80
+
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+#kubectl apply -f deployment.yaml
+--------------------------------------------------------------
+service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+
+spec:
+  selector:
+    app: nginx
+
+  ports:
+  - port: 80
+    targetPort: 80
+
+  type: ClusterIP
+--------------------------------------------------------------
+loadbalancer (EKS)
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-lb
+
+spec:
+  selector:
+    app: nginx
+
+  ports:
+  - port: 80
+    targetPort: 80
+
+  type: LoadBalancer
+---------------------------------------------------------------
+Persistent Volume (PV)
+hostPath Example
+apiVersion: v1
+kind: PersistentVolume
+
+metadata:
+  name: my-pv
+
+spec:
+  capacity:
+    storage: 5Gi
+
+  accessModes:
+    - ReadWriteOnce
+
+  hostPath:
+    path: /data/demo
+kubectl apply -f pv.yaml
+kubectl get pv
+--------------------------------------------------------------
+Persistent Volume Claim (PVC)
+apiVersion: v1
+kind: PersistentVolumeClaim
+
+metadata:
+  name: my-pvc
+
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+  resources:
+    requests:
+      storage: 2Gi
+kubectl apply -f pvc.yaml
+kubectl get pvc
+-------------------------------------------------------------
+ConfigMap
+configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+
+metadata:
+  name: app-config
+
+data:
+  APP_ENV: production
+  DB_HOST: mysql-service
+  LOG_LEVEL: INFO
+
+##Use ConfigMap in Deployment
+env:
+- name: APP_ENV
+  valueFrom:
+    configMapKeyRef:
+      name: app-config
+      key: APP_ENV
+-------------------------------------------------------------
+#Secret YAML
+apiVersion: v1
+kind: Secret
+
+metadata:
+  name: app-secret
+
+type: Opaque
+
+data:
+  username: YWRtaW4=
+  password: cGFzc3dvcmQ=
+----------------------------------------------------------------
+Deployment + PVC Mount
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: nginx-storage
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: nginx
+
+  template:
+    metadata:
+      labels:
+        app: nginx
+
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+
+        volumeMounts:
+        - mountPath: "/usr/share/nginx/html"
+          name: storage
+
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: my-pvc
+------------------------------------------------------------------
+Useful Commands for Interviews
+kubectl get all
+
+kubectl get pods -A
+
+kubectl describe pod <pod-name>
+
+kubectl logs <pod-name>
+
+kubectl logs -f <pod-name>
+
+kubectl exec -it <pod-name> -- bash
+
+kubectl get svc
+
+kubectl get ingress
+
+kubectl get pv
+
+kubectl get pvc
+
+kubectl get nodes
+
+kubectl top nodes
+
+kubectl top pods
