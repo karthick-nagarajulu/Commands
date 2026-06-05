@@ -20,7 +20,7 @@ Verify:
 aws sts get-caller-identity
 aws eks list-clusters --region ap-south-1
 
-aws configure list --Check current config
+aws configure list #Check current config
 
 #clear old credentials:
 rm ~/.aws/credentials
@@ -37,9 +37,11 @@ solution:
   --query "cluster.status"
 you need to get "ACTIVE"
 3.kubectl config current-context #Check Current Contex | You may still be pointing to the deleted cluster.
-4.aws eks update-kubeconfig \ #Regenerate kubeconfig
+4.aws eks update-kubeconfig \
   --region ap-south-1 \
-  --name eks
+  --name eks-test
+else 
+aws eks update-kubeconfig --region ap-south-1 --name eks-test
 ------------------------------------------------------------------
 Deployment.yaml
 apiVersion: apps/v1
@@ -240,3 +242,76 @@ kubectl get nodes
 kubectl top nodes
 
 kubectl top pods
+----------------------------------------------------------------------------------
+# EFS StorageClass
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: efs-sc
+provisioner: efs.csi.aws.com
+---
+# EFS PVC - ReadWriteMany
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: efs-shared-pvc
+spec:
+  accessModes:
+    - ReadWriteMany        # ALL pods in ALL AZ can access!
+  storageClassName: efs-sc
+  resources:
+    requests:
+      storage: 10Gi
+---
+# Deployment using EFS
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: webapp
+        image: nginx
+        volumeMounts:
+        - name: shared-storage
+          mountPath: /usr/share/nginx/uploads
+      volumes:
+      - name: shared-storage
+        persistentVolumeClaim:
+          claimName: efs-shared-pvc   # Same PVC for ALL 3 pods!
+------------------------------------------------------------------------
+Real World Use Cases
+MySQL StatefulSet    → EBS (each pod own volume, same AZ)
+Jenkins Master       → EBS (single pod, persistent home)
+Shared uploads       → EFS (all webapp pods share files)
+ML Model files       → EFS (all inference pods read same model)
+Logs aggregation     → EFS (multiple pods write logs)
+Config files         → EFS (all pods read same config)
+
+🎯 Final Architecture — Production Ready
+ap-south-1a          ap-south-1b          ap-south-1c
+┌────────────────┐   ┌────────────────┐   ┌────────────────┐
+│  webapp-1      │   │  webapp-2      │   │  webapp-3      │
+│  ┌──────────┐  │   │  ┌──────────┐  │   │  ┌──────────┐  │
+│  │EFS Mount │  │   │  │EFS Mount │  │   │  │EFS Mount │  │
+│  │/uploads  │  │   │  │/uploads  │  │   │  │/uploads  │  │
+│  └──────────┘  │   │  └──────────┘  │   │  └──────────┘  │
+│                │   │                │   │                │
+│  mysql-0       │   │  mysql-1       │   │  mysql-2       │
+│  ┌──────────┐  │   │  ┌──────────┐  │   │  ┌──────────┐  │
+│  │EBS 10GB  │  │   │  │EBS 10GB  │  │   │  │EBS 10GB  │  │
+│  │(Master)  │  │   │  │(Slave)   │  │   │  │(Slave)   │  │
+│  └──────────┘  │   │  └──────────┘  │   │  └──────────┘  │
+└────────────────┘   └────────────────┘   └────────────────┘
+         ↑                   ↑                    ↑
+         └───────────────────┴────────────────────┘
+                    EFS Shared Storage
+              (Same files across all AZ!)
+---------------------------
+interview questions
+1.Q: Can EBS be shared across AZ? When do you use EFS?
+
+"EBS is AZ locked — it can only attach to nodes in the same AZ. For StatefulSet like MySQL, each pod gets its own EBS in its own AZ via volumeClaimTemplates — they don't share storage, they replicate data via MySQL replication over network. EFS is used when multiple pods across different AZs need to read and write the same files — like shared media uploads, ML models, or config files. EFS uses ReadWriteMany access mode while EBS uses ReadWriteOnce. In production EKS, I use EBS for databases and EFS for shared application storage."
