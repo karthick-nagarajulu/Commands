@@ -72,45 +72,7 @@ kubectl top nodes
 
 kubectl top pods
 ----------------------------------------------------------------------------------
-# EFS StorageClass
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: efs-sc
-provisioner: efs.csi.aws.com
----
-# EFS PVC - ReadWriteMany
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: efs-shared-pvc
-spec:
-  accessModes:
-    - ReadWriteMany        # ALL pods in ALL AZ can access!
-  storageClassName: efs-sc
-  resources:
-    requests:
-      storage: 10Gi
----
-# Deployment using EFS
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: webapp
-spec:
-  replicas: 3
-  template:
-    spec:
-      containers:
-      - name: webapp
-        image: nginx
-        volumeMounts:
-        - name: shared-storage
-          mountPath: /usr/share/nginx/uploads
-      volumes:
-      - name: shared-storage
-        persistentVolumeClaim:
-          claimName: efs-shared-pvc   # Same PVC for ALL 3 pods!
+
 ------------------------------------------------------------------------
 Real World Use Cases
 MySQL StatefulSet    → EBS (each pod own volume, same AZ)
