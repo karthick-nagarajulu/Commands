@@ -95,3 +95,255 @@ Deployment        Deployment                      DeploymentConfig + Deployment
 Build             ❌                              BuildConfig + S2I
 Security          PSP                             SCCImage 
 registry          external                        built-in ImageStream
+------------------------------------------------------------------------------------------------------
+Production app needs:
+├── deployment.yaml      # Pods
+├── service.yaml         # Internal networking
+├── route.yaml           # External access
+├── configmap.yaml       # Configuration
+├── secret.yaml          # Credentials
+├── hpa.yaml             # Auto-scaling
+├── resourcequota.yaml   # Resource limits
+└── networkpolicy.yaml   # Security
+
+deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-app
+  namespace: my-app
+  labels:
+    app: nginx-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx-app
+  template:
+    metadata:
+      labels:
+        app: nginx-app
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.25
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        # Health checks — VERY important for production
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        # Load config & secrets
+        envFrom:
+        - configMapRef:
+            name: nginx-config
+        - secretRef:
+            name: nginx-secret
+#2.service.yaml — Internal Networking
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-svc
+  namespace: my-app
+  labels:
+    app: nginx-app
+spec:
+  selector:
+    app: nginx-app          # Must match deployment pod labels
+  ports:
+  - name: http
+    port: 80                # Service port
+    targetPort: 8080        # Container port
+    protocol: TCP
+  type: ClusterIP           # Internal only (default)
+#3.route.yaml — External Access (OpenShift specific)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nginx-route
+  namespace: my-app
+  labels:
+    app: nginx-app
+spec:
+  host: nginx.apps.mycluster.com    # Your external URL
+  to:
+    kind: Service
+    name: nginx-svc
+  port:
+    targetPort: http
+  tls:
+    termination: edge               # HTTPS termination
+    insecureEdgeTerminationPolicy: Redirect   # HTTP → HTTPS
+4.configmap.yaml — Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: my-app
+data:
+  APP_ENV: "production"
+  LOG_LEVEL: "info"
+  MAX_CONNECTIONS: "100"
+  # Can also store full config files:
+  nginx.conf: |
+    server {
+      listen 8080;
+      location / {
+        root /usr/share/nginx/html;
+      }
+    }
+#5.secret.yaml — Credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nginx-secret
+  namespace: my-app
+type: Opaque
+data:
+  # Values MUST be base64 encoded
+  DB_PASSWORD: cGFzc3dvcmQxMjM=        # echo -n 'password123' | base64
+  API_KEY: YWJjZGVmZ2hpag==            # echo -n 'abcdefghij' | base64
+
+
+# How to generate base64 values:
+echo -n 'password123' | base64
+# Output: cGFzc3dvcmQxMjM=
+
+6.hpa.yaml — Auto-Scaling (Horizontal Pod Autoscaler)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx-hpa
+  namespace: my-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx-app
+  minReplicas: 3              # Never go below 3
+  maxReplicas: 10             # Never exceed 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70   # Scale up if CPU > 70%
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80   # Scale up if memory > 80%
+7.resourcequota.yaml — Resource Limits (Namespace)
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: my-app-quota
+  namespace: my-app
+spec:
+  hard:
+    requests.cpu: "4"           # Total CPU requests
+    requests.memory: "8Gi"      # Total memory requests
+    limits.cpu: "8"             # Total CPU limits
+    limits.memory: "16Gi"       # Total memory limits
+    pods: "20"                  # Max 20 pods
+    services: "10"              # Max 10 services
+    persistentvolumeclaims: "5" # Max 5 PVCs
+
+8.networkpolicy.yaml — Security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nginx-netpol
+  namespace: my-app
+spec:
+  podSelector:
+    matchLabels:
+      app: nginx-app
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Only allow traffic from pods with this label
+  - from:
+    - podSelector:
+        matchLabels:
+          role: frontend
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  # Allow DNS resolution
+  - to:
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+
+📁 Folder Structure & Apply
+my-app-manifests/
+├── namespace.yaml
+├── deployment.yaml
+├── service.yaml
+├── route.yaml
+├── configmap.yaml
+├── secret.yaml
+├── hpa.yaml
+├── resourcequota.yaml
+└── networkpolicy.yaml
+
+# Validate everything first
+oc apply -f ./my-app-manifests/ --dry-run=server
+
+# Apply all at once
+oc apply -f ./my-app-manifests/
+
+# Verify
+oc get all -n my-app
+oc get hpa,quota,networkpolicy -n my-app
+
+🔑 Apply Order Matters
+bash# Correct order:
+1. namespace.yaml         # Create namespace first
+2. resourcequota.yaml     # Set limits
+3. configmap.yaml         # Config before pods
+4. secret.yaml            # Secrets before pods
+5. deployment.yaml        # Then pods
+6. service.yaml           # Then networking
+7. route.yaml             # Then external access
+8. hpa.yaml               # Then autoscaling
+9. networkpolicy.yaml     # Then security
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
