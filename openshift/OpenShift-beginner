@@ -1,1 +1,97 @@
+OpenShift (oc) Command Cheatsheet 🔴
+OpenShift uses the oc CLI — similar to kubectl but with extra features.
 
+🔑 Login & Project
+bashoc login https://api.cluster:6443 -u user -p pass  # Login to cluster
+oc login --token=<token>                           # Login with token
+oc whoami                                           # Show current user
+oc whoami --show-server                             # Show cluster URL
+oc projects                                         # List all projects
+oc project myproject                                # Switch to a project
+oc new-project myapp                                # Create new project
+
+📦 Pods & Workloads
+bashoc get pods                          # List pods in current project
+oc get pods -o wide                  # Pods with node & IP info
+oc get pods --all-namespaces         # Pods across all projects
+oc describe pod <pod>                # Detailed pod info & events
+oc logs <pod>                        # View pod logs
+oc logs -f <pod>                     # Live stream logs
+oc logs <pod> -c <container>         # Logs of specific container
+oc rsh <pod>                         # Remote shell into pod
+oc exec <pod> -- ls /app             # Run command inside pod
+oc delete pod <pod>                  # Delete a pod
+
+🚀 Deployments & Apps
+bashoc new-app nginx                          # Deploy app from image
+oc new-app https://github.com/user/repo   # Deploy from source (S2I)
+oc get deployment                         # List deployments
+oc get dc                                 # List deploymentconfigs (OpenShift specific)
+oc rollout latest dc/<name>               # Trigger new deployment
+oc rollout status dc/<name>               # Check rollout status
+oc rollout undo dc/<name>                 # Rollback deployment
+oc scale dc/<name> --replicas=3           # Scale up/down
+
+🌐 Services, Routes & Networking
+bashoc get svc                           # List services
+oc expose svc/<name>                 # Create a route (expose externally)
+oc get routes                        # List routes (OpenShift's ingress)
+oc describe route <name>             # Route details & URL
+oc get endpoints                     # Show service endpoints
+
+Route = OpenShift's way to expose apps externally (like Ingress in K8s)
+
+
+🔧 Build & Image (OpenShift Specific)
+bashoc get builds                        # List builds
+oc start-build <buildconfig>         # Start a new build
+oc logs -f bc/<name>                 # Follow build logs
+oc get bc                            # List build configs
+oc get is                            # List image streams
+oc import-image <name> --from=<img>  # Import external image
+
+🔐 Users, Roles & Security (RBAC)
+bashoc get users                                          # List users
+oc get sa                                             # List service accounts
+oc create sa myapp-sa                                 # Create service account
+oc adm policy add-role-to-user edit user1 -n proj     # Give edit role
+oc adm policy add-role-to-user admin user2            # Give admin role
+oc adm policy add-scc-to-user anyuid -z myapp-sa      # Add Security Context Constraint
+oc get scc                                            # List Security Context Constraints
+oc policy add-role-to-user view user3                 # Read-only access
+
+SCC (Security Context Constraints) = OpenShift's extra security layer controlling what pods can do
+
+
+⚙️ Config & Secrets
+bashoc get configmap                              # List configmaps
+oc create configmap myconfig --from-file=app.properties
+oc get secret                                 # List secrets
+oc create secret generic mysecret --from-literal=password=1234
+oc set env dc/<name> KEY=value                # Set environment variable
+oc set volume dc/<name> --add --type=pvc      # Attach storage
+
+📊 Resources & Quotas
+bashoc get quota                         # List resource quotas
+oc describe quota <name>             # Quota usage details
+oc get limitrange                    # List limit ranges
+oc adm top pods                      # Pod CPU/memory usage
+oc adm top nodes                     # Node resource usage
+
+🩺 Troubleshooting (Most Used in Support)
+bashoc get events --sort-by='.lastTimestamp'   # Recent events (find issues)
+oc describe pod <pod>                       # Check Events section for errors
+oc logs <pod> --previous                    # Logs of crashed/restarted pod
+oc get pods -o wide                         # Which node pod is running on
+oc debug node/<node-name>                   # Debug a node
+oc status                                   # Overview of current project
+oc adm node-logs <node>                     # Node level logs
+
+🔍 oc vs kubectl — Key Differences
+Feature           kubectl                         oc (OpenShift)
+Projects          namespaces                      projects (namespace + extras)
+Expose app        Ingress                         Routes
+Deployment        Deployment                      DeploymentConfig + Deployment
+Build             ❌                              BuildConfig + S2I
+Security          PSP                             SCCImage 
+registry          external                        built-in ImageStream
